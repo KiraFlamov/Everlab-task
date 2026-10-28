@@ -82,6 +82,8 @@ npm run typecheck        # проверка типов, включая тест�
 | Метод | Путь | Описание |
 |---|---|---|
 | `GET` | `/health` | Проверка сервиса и БД (без авторизации) |
+| `GET` | `/docs/` | Swagger UI (без авторизации; `/docs` перенаправляет сюда) |
+| `GET` | `/docs/openapi.json` | Спецификация OpenAPI 3.0 (без авторизации) |
 | `GET` | `/api/v1/cryptocurrencies?limit&offset` | Список отслеживаемых криптовалют с последней ценой |
 | `POST` | `/api/v1/cryptocurrencies` | Добавить в отслеживаемые: `{ "symbol": "BTC", "name"?: "..." }` |
 | `GET` | `/api/v1/cryptocurrencies/{id}` | Получить криптовалюту |

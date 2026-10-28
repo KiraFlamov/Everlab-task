@@ -66,6 +66,30 @@ export const openApiSpec = {
         },
       },
     },
+    '/docs/': {
+      get: {
+        tags: ['System'],
+        summary: 'Swagger UI',
+        description: '`/docs` redirects here (301).',
+        security: [],
+        responses: {
+          200: { description: 'Interactive API documentation', content: { 'text/html': {} } },
+        },
+      },
+    },
+    '/docs/openapi.json': {
+      get: {
+        tags: ['System'],
+        summary: 'This OpenAPI 3.0 document',
+        security: [],
+        responses: {
+          200: {
+            description: 'OpenAPI document',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+        },
+      },
+    },
     '/api/v1/cryptocurrencies': {
       get: {
         tags: ['Cryptocurrencies'],

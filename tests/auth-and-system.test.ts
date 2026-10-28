@@ -79,6 +79,9 @@ describe('System endpoints and error handling', () => {
     expect(res.body.openapi).toMatch(/^3\.0\./);
     expect(Object.keys(res.body.paths)).toEqual(
       expect.arrayContaining([
+        '/health',
+        '/docs/',
+        '/docs/openapi.json',
         '/api/v1/cryptocurrencies',
         '/api/v1/cryptocurrencies/{id}',
         '/api/v1/cryptocurrencies/{id}/history',
@@ -91,7 +94,38 @@ describe('System endpoints and error handling', () => {
     const res = await request(ctx.app).get('/docs/');
 
     expect(res.status).toBe(200);
+    expect(res.type).toBe('text/html');
     expect(res.text).toContain('swagger-ui');
+  });
+
+  it('GET /docs redirects to /docs/ so relative asset URLs resolve', async () => {
+    const res = await request(ctx.app).get('/docs');
+
+    expect(res.status).toBe(301);
+    expect(res.headers.location).toBe('/docs/');
+  });
+
+  it('GET /docs/ serves Swagger UI assets', async () => {
+    const res = await request(ctx.app).get('/docs/swagger-ui.css');
+
+    expect(res.status).toBe(200);
+    expect(res.type).toBe('text/css');
+  });
+
+  it.each([
+    ['POST', '/docs/openapi.json'],
+    ['PUT', '/docs/openapi.json'],
+    ['POST', '/docs/'],
+    ['DELETE', '/docs/'],
+    ['POST', '/docs/swagger-ui-init.js'],
+    ['GET', '/docs/openapi.yaml'],
+    ['GET', '/docs/nonexistent.js'],
+    ['GET', '/docs/foo/bar'],
+  ])('%s %s returns JSON 404 instead of the Swagger UI page', async (method, path) => {
+    const res = await request(ctx.app)[method.toLowerCase() as 'get' | 'post' | 'put' | 'delete'](path);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it('returns JSON 404 for unknown routes', async () => {

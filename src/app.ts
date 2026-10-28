@@ -61,10 +61,16 @@ export function createApplication(deps: AppDependencies): Application {
     }
   });
 
-  app.get('/docs/openapi.json', (_req, res) => {
+  // swagger-ui-express answers any method/sub-path with the UI page, so it is fenced in:
+  // only GET/HEAD, only known assets and '/', everything else falls through to the JSON 404
+  const docs = express.Router();
+  docs.use((req, _res, next) => next(req.method === 'GET' || req.method === 'HEAD' ? undefined : 'router'));
+  docs.get('/openapi.json', (_req, res) => {
     res.json(openApiSpec);
   });
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, { customSiteTitle: 'Crypto Price Tracker API' }));
+  docs.use(swaggerUi.serve); // static assets; also redirects /docs -> /docs/
+  docs.get('/', swaggerUi.setup(openApiSpec, { customSiteTitle: 'Crypto Price Tracker API' }));
+  app.use('/docs', docs);
 
   const api = express.Router();
   api.use(authenticate({ full: deps.apiKey, readonly: deps.apiKeyReadonly ?? null }));
