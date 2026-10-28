@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    image: crypto-price-tracker
+    env_file: .env
+    environment:
+      # Inside the container the app always listens on 3000; PORT from .env selects the host port
+      PORT: "3000"
+      DB_PATH: /app/data/app.db
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - db-data:/app/data
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  db-data:
