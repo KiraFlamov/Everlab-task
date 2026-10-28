@@ -13,6 +13,7 @@ function main(): void {
 
   const db = openDatabase(config.dbPath);
   const priceProvider = new CoinMarketCapClient({ ...config.cmc, logger });
+  const requestsAbortController = new AbortController();
   const { app, priceService } = createApplication({
     db,
     priceProvider,
@@ -20,6 +21,7 @@ function main(): void {
     apiKeyReadonly: config.apiKeyReadonly,
     currency: config.priceCurrency,
     priceMaxAgeMs: config.priceMaxAgeMs,
+    shutdownSignal: requestsAbortController.signal,
     logger,
   });
 
@@ -34,7 +36,7 @@ function main(): void {
     process.exit(1);
   });
 
-  registerSignalHandlers(createShutdown({ server, job, db, logger }));
+  registerSignalHandlers(createShutdown({ server, job, db, requestsAbortController, logger }));
 }
 
 try {

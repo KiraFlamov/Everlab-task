@@ -1,6 +1,7 @@
 import { createApplication } from '../src/app';
 import type { CoinInfo, PriceProvider, Quote } from '../src/clients/coinmarketcap.client';
 import { openDatabase, type Db } from '../src/db/database';
+import { ExternalApiError } from '../src/errors';
 
 export const API_KEY = 'test-full-access-key-0123456789';
 export const API_KEY_READONLY = 'test-read-only-key-0123456789';
@@ -21,25 +22,45 @@ export class FakePriceProvider implements PriceProvider {
   ]);
   /** When set, every call fails with this error */
   error: Error | null = null;
+  /** When true, calls never complete unless aborted via their signal (like a stuck upstream) */
+  hang = false;
   findBySymbolCalls: string[] = [];
   getQuotesCalls: number[][] = [];
 
-  async findBySymbol(symbol: string): Promise<CoinInfo | null> {
+  async findBySymbol(symbol: string, signal?: AbortSignal): Promise<CoinInfo | null> {
     this.findBySymbolCalls.push(symbol);
-    if (this.error) throw this.error;
+    await this.respond(signal);
     return this.coins.get(symbol) ?? null;
   }
 
   async getQuotes(cmcIds: number[], _currency: string, signal?: AbortSignal): Promise<Map<number, Quote>> {
     this.getQuotesCalls.push(cmcIds);
-    if (this.error) throw this.error;
-    if (signal?.aborted) throw new Error('aborted');
+    await this.respond(signal);
     const result = new Map<number, Quote>();
     for (const id of cmcIds) {
       const price = this.prices.get(id);
       if (price !== undefined) result.set(id, { cmcId: id, price, lastUpdated: '2024-01-01T00:00:00.000Z' });
     }
     return result;
+  }
+
+  private respond(signal?: AbortSignal): Promise<void> {
+    const aborted = () => new ExternalApiError('ABORTED', 'CoinMarketCap request was aborted');
+    if (signal?.aborted) return Promise.reject(aborted());
+    if (this.error) return Promise.reject(this.error);
+    if (!this.hang) return Promise.resolve();
+    return new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(aborted()), { once: true });
+    });
+  }
+}
+
+/** Polls until the condition holds (for waiting on asynchronous side effects in tests). */
+export async function waitFor(condition: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error('waitFor: condition not met in time');
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
 
@@ -59,7 +80,9 @@ export interface TestContext {
   priceService: ReturnType<typeof createApplication>['priceService'];
 }
 
-export function createTestContext(options: { priceMaxAgeMs?: number } = {}): TestContext {
+export function createTestContext(
+  options: { priceMaxAgeMs?: number; shutdownSignal?: AbortSignal } = {},
+): TestContext {
   const db = openDatabase(':memory:');
   const provider = new FakePriceProvider();
   const clock = new TestClock();
@@ -70,6 +93,7 @@ export function createTestContext(options: { priceMaxAgeMs?: number } = {}): Tes
     apiKeyReadonly: API_KEY_READONLY,
     currency: 'USD',
     priceMaxAgeMs: options.priceMaxAgeMs ?? 60_000,
+    shutdownSignal: options.shutdownSignal,
     now: clock.now,
   });
   return { db, provider, clock, app, priceService };

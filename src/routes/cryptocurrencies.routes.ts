@@ -22,7 +22,12 @@ function present(crypto: CryptocurrencyWithPrice, currency: string) {
   };
 }
 
-export function cryptocurrenciesRouter(service: CryptocurrencyService, currency: string): Router {
+/** `signal` aborts in-flight CoinMarketCap requests on shutdown. */
+export function cryptocurrenciesRouter(
+  service: CryptocurrencyService,
+  currency: string,
+  signal?: AbortSignal,
+): Router {
   const router = Router();
 
   router.get('/', (req, res) => {
@@ -33,7 +38,7 @@ export function cryptocurrenciesRouter(service: CryptocurrencyService, currency:
 
   router.post('/', async (req, res) => {
     const input = validateCreateCryptocurrency(req.body);
-    const created = await service.create(input);
+    const created = await service.create(input, signal);
     res.status(201).location(`${req.baseUrl}/${created.id}`).json({ data: present(created, currency) });
   });
 

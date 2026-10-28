@@ -56,12 +56,12 @@ export class CryptocurrencyService {
   }
 
   /** Starts tracking a cryptocurrency. The symbol is resolved against CoinMarketCap. */
-  async create(input: CreateCryptocurrencyInput): Promise<CryptocurrencyWithPrice> {
+  async create(input: CreateCryptocurrencyInput, signal?: AbortSignal): Promise<CryptocurrencyWithPrice> {
     if (this.cryptoRepo.findBySymbol(input.symbol)) {
       throw new ConflictError(`Cryptocurrency ${input.symbol} is already tracked`);
     }
 
-    const coin = await this.provider.findBySymbol(input.symbol);
+    const coin = await this.provider.findBySymbol(input.symbol, signal);
     if (!coin) {
       throw new AppError(422, 'UNKNOWN_SYMBOL', `CoinMarketCap does not know cryptocurrency ${input.symbol}`);
     }
@@ -78,7 +78,7 @@ export class CryptocurrencyService {
 
     // Best effort: the background job will retry if this fails
     try {
-      await this.priceService.sync([created]);
+      await this.priceService.sync([created], signal);
     } catch (error) {
       this.logger.warn('Initial price fetch failed', {
         symbol: created.symbol,

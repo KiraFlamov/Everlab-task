@@ -20,6 +20,8 @@ export interface AppDependencies {
   apiKeyReadonly?: string | null;
   currency: string;
   priceMaxAgeMs: number;
+  /** Aborted on shutdown: cancels CoinMarketCap requests made while serving HTTP requests */
+  shutdownSignal?: AbortSignal;
   logger?: Logger;
   now?: () => Date;
 }
@@ -66,8 +68,8 @@ export function createApplication(deps: AppDependencies): Application {
 
   const api = express.Router();
   api.use(authenticate({ full: deps.apiKey, readonly: deps.apiKeyReadonly ?? null }));
-  api.use('/cryptocurrencies', cryptocurrenciesRouter(cryptocurrencyService, deps.currency));
-  api.use('/prices', pricesRouter(priceService));
+  api.use('/cryptocurrencies', cryptocurrenciesRouter(cryptocurrencyService, deps.currency, deps.shutdownSignal));
+  api.use('/prices', pricesRouter(priceService, deps.shutdownSignal));
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

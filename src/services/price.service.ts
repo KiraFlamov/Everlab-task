@@ -111,7 +111,7 @@ export class PriceService {
    * Returns the latest prices of tracked cryptocurrencies. Prices older than `maxAgeMs` are refreshed
    * from CoinMarketCap first; if it is unavailable, the last stored prices are returned with a warning.
    */
-  async getLatest(symbols?: string[]): Promise<LatestPricesResult> {
+  async getLatest(symbols?: string[], signal?: AbortSignal): Promise<LatestPricesResult> {
     const load = () =>
       symbols
         ? this.cryptoRepo.findBySymbolsWithPrice(symbols, this.currency)
@@ -128,7 +128,7 @@ export class PriceService {
     const outdated = items.filter((i) => this.isStale(i.priceFetchedAt));
     if (outdated.length > 0) {
       try {
-        await this.sync(outdated);
+        await this.sync(outdated, signal);
         items = load();
       } catch (error) {
         if (!(error instanceof ExternalApiError)) throw error;

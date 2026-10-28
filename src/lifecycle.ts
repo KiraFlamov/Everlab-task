@@ -7,6 +7,8 @@ export interface ShutdownDeps {
   server: Server;
   job: PriceSyncJob | null;
   db: Db;
+  /** Its signal is passed to HTTP handlers; aborting it cancels their CoinMarketCap requests */
+  requestsAbortController?: AbortController;
   logger: Logger;
   /** Hard deadline after which the process is terminated anyway */
   timeoutMs?: number;
@@ -29,8 +31,10 @@ export function registerSignalHandlers(
 }
 
 /**
- * Builds an idempotent graceful shutdown routine: stops background jobs (aborting in-flight
- * requests), stops accepting connections, waits for active requests and closes the database.
+ * Builds an idempotent graceful shutdown routine: stops accepting connections, aborts in-flight
+ * CoinMarketCap requests (of HTTP handlers and of the background job), waits for active HTTP
+ * requests to finish and closes the database. Without the abort, a handler stuck in CMC retries
+ * (up to ~31 s with default settings) would outlive the forced-exit deadline.
  */
 export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<void> {
   const exit = deps.exit ?? ((code: number) => process.exit(code));
@@ -48,12 +52,19 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
 
     shuttingDown = (async () => {
       let code = 0;
+      let idleSweeper: NodeJS.Timeout | undefined;
       try {
-        await deps.job?.stop();
-        await new Promise<void>((resolve, reject) => {
+        const serverClosed = new Promise<void>((resolve, reject) => {
           deps.server.close((err) => (err ? reject(err) : resolve()));
-          deps.server.closeIdleConnections();
         });
+        // close() only drops connections idle at call time; keep-alive connections whose in-flight
+        // response finishes later would otherwise hold it open until the keep-alive timeout
+        deps.server.closeIdleConnections();
+        idleSweeper = setInterval(() => deps.server.closeIdleConnections(), 50).unref();
+        // Handlers waiting for CMC fail fast (503 or stored prices) instead of blocking server.close()
+        deps.requestsAbortController?.abort();
+        await deps.job?.stop();
+        await serverClosed;
         deps.db.close();
         deps.logger.info('Shutdown complete');
       } catch (error) {
@@ -61,6 +72,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => Promise<
         deps.logger.error('Error during shutdown', { error: error instanceof Error ? error.message : String(error) });
       } finally {
         clearTimeout(forceExit);
+        clearInterval(idleSweeper);
       }
       exit(code);
     })();
